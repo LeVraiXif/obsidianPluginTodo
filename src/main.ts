@@ -1,31 +1,40 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, MarkdownView } from 'obsidian';
 
 interface DailyTodoPluginSettings {
   templateFilePath: string;
-  enableNotifications: boolean;
-  notificationInterval: number; // en minutes
+  notificationEnabled: boolean;
+  notificationType: 'interval' | 'fixed';
+  notificationInterval: number;
+  reminders: string[];
+  remindersSent: boolean[];
+  lastResetDate: string;
 }
 
 const DEFAULT_SETTINGS: DailyTodoPluginSettings = {
   templateFilePath: "",
-  enableNotifications: true,
-  notificationInterval: 60, // par défaut 60 minutes
+  notificationEnabled: true,
+  notificationType: 'interval',
+  notificationInterval: 60,
+  reminders: [],
+  remindersSent: [],
+  lastResetDate: '',
 };
 
 export default class DailyTodoPlugin extends Plugin {
   settings: DailyTodoPluginSettings;
-  notificationTimer: number;
 
   async onload() {
     await this.loadSettings();
     this.app.workspace.on('layout-change', () => this.createDailyTodoNote());
     this.addSettingTab(new DailyTodoSettingTab(this.app, this));
 
-    this.startNotificationTimer();
-  }
-
-  async onunload() {
-    this.stopNotificationTimer();
+    if (this.settings.notificationEnabled) {
+      if (this.settings.notificationType === 'interval') {
+        setInterval(() => this.checkAndNotify(), this.settings.notificationInterval * 60 * 1000);
+      } else {
+        this.initReminders();
+      }
+    }
   }
 
   async loadSettings() {
@@ -37,17 +46,11 @@ export default class DailyTodoPlugin extends Plugin {
   }
 
   async readTemplateFile(): Promise<string> {
-    const { vault } = this.app;
-    const templateFile = vault.getAbstractFileByPath(this.settings.templateFilePath);
-
-    console.log("Template file path:", this.settings.templateFilePath);
-    console.log("Template file:", templateFile);
+    const templateFile = this.app.vault.getAbstractFileByPath(this.settings.templateFilePath);
 
     if (templateFile instanceof TFile) {
       try {
-        const content = await vault.read(templateFile);
-        console.log("Template file content:", content);
-        return content;
+        return await this.app.vault.read(templateFile);
       } catch (error) {
         console.error("Error reading template file:", error);
       }
@@ -55,6 +58,31 @@ export default class DailyTodoPlugin extends Plugin {
     return `No template`;
   }
 
+  initReminders() {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    if (this.settings.lastResetDate !== today) {
+      this.resetReminders();
+      this.settings.lastResetDate = today;
+      this.saveSettings();
+    }
+
+    this.settings.reminders.forEach((time, index) => {
+      const [hours, minutes] = time.split(':').map(Number);
+      const reminderTime = new Date();
+      reminderTime.setHours(hours, minutes, 0, 0);     
+      
+      if (now < reminderTime && !this.settings.remindersSent[index]) {
+        setTimeout(() => {
+          this.checkAndNotify();
+          this.settings.remindersSent[index] = true;
+          this.saveSettings();
+        }, reminderTime.getTime() - now.getTime());
+      }    
+    });
+  }
+  
   async createDailyTodoNote() {
     const dateFormat = 'YYYY-MM-DD';
     const folderName = 'Daily Todos';
@@ -76,12 +104,12 @@ export default class DailyTodoPlugin extends Plugin {
       await vault.create(`${folderName}/${dailyNoteName}.md`, dailyTodoContent);
     }
   }
+  resetReminders() {
+    this.settings.remindersSent = this.settings.reminders.map(() => false);
+  }
 
-  async checkAndNotify() {
-    if (!this.settings.enableNotifications) {
-      return;
-    }
 
+  async getDailyNote(): Promise<TFile | null> {
     const dateFormat = 'YYYY-MM-DD';
     const folderName = 'Daily Todos';
     const vault = this.app.vault;
@@ -91,22 +119,23 @@ export default class DailyTodoPlugin extends Plugin {
 
     const dailyNote = vault.getAbstractFileByPath(`${folderName}/${dailyNoteName}.md`);
 
-    if (!dailyNote) {
-      new Notification("Daily Todo", {
-        body: "N'oubliez pas de créer votre liste de tâches quotidiennes !",
-      });
+    if (dailyNote instanceof TFile) {
+      return dailyNote;
     }
+
+    return null;
   }
 
-  startNotificationTimer() {
-    const interval = this.settings.notificationInterval * 60 * 1000;
-    this.notificationTimer = window.setInterval(() => this.checkAndNotify(), interval);
-  }
-
-  stopNotificationTimer() {
-    if (this.notificationTimer) {
-      window.clearInterval(this.notificationTimer);
-      this.notificationTimer = null;
+  async checkAndNotify() {
+    const dailyNote = await this.getDailyNote();
+    if (dailyNote) {
+      const content = await this.app.vault.read(dailyNote);
+      const checkboxes = content.match(/\[([ xX])\]/g) || [];
+      const completed = checkboxes.every((checkbox) => checkbox === '[x]' || checkbox === '[X]');
+  
+      if (!completed) {
+        new Notification("N'oubliez pas de terminer votre liste de tâches quotidiennes !");
+      }
     }
   }
 }
@@ -123,48 +152,85 @@ class DailyTodoSettingTab extends PluginSettingTab {
     let { containerEl } = this;
     containerEl.empty();
     containerEl.createEl('h2', { text: 'Daily Todo Plugin Settings' });
-  
+
     new Setting(containerEl)
-        .setName('Template file path')
-        .setDesc('Path to the template file in your vault')
+      .setName('Template file path')
+      .setDesc('Path to the template file in your vault')
+      .addText(text => text
+        .setPlaceholder('Example: Templates/DailyTodo.md')
+        .setValue(this.plugin.settings.templateFilePath)
+        .onChange(async (value) => {
+          this.plugin.settings.templateFilePath = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Enable notifications')
+      .setDesc('Enable or disable notifications')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.notificationEnabled)
+        .onChange(async (value) => {
+          this.plugin.settings.notificationEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+
+        new Setting(containerEl)
+        .setName('Type de notification')
+        .setDesc("Choisissez 'Interval' pour des notifications régulières ou 'Fixed' pour des rappels à des heures précises")
+        .addDropdown(dropdown => dropdown
+          .addOption('interval', 'Interval')
+          .addOption('fixed', 'Fixed')
+          .setValue(this.plugin.settings.notificationType)
+          .onChange(async (value: 'interval' | 'fixed') => {
+            this.plugin.settings.notificationType = value;
+            await this.plugin.saveSettings();
+            this.plugin.initReminders();
+          }));
+
+    new Setting(containerEl)
+      .setName('Notification interval')
+      .setDesc('Interval de notification en minutes')
+      .addSlider(slider => slider
+        .setLimits(1, 240, 1)
+        .setDynamicTooltip()
+        .setValue(this.plugin.settings.notificationInterval)
+        .onChange(async (value) => {
+          this.plugin.settings.notificationInterval = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Reminders')
+      .setDesc('Add reminder times in HH:mm format')
+      .addButton(button => button
+        .setButtonText('Add a reminder')
+       
+        .onClick(async () => {
+          this.plugin.settings.reminders.push('12:00');
+          this.plugin.settings.remindersSent.push(false);
+          await this.plugin.saveSettings();
+          this.display();
+        }));
+
+    this.plugin.settings.reminders.forEach((time, index) => {
+      new Setting(containerEl)
+        .setName(`Reminder #${index + 1}`)
         .addText(text => text
-          .setPlaceholder('Example: Templates/DailyTodo.md')
-          .setValue(this.plugin.settings.templateFilePath)
+          .setValue(time)
           .onChange(async (value) => {
-            this.plugin.settings.templateFilePath = value;
+            this.plugin.settings.reminders[index] = value;
             await this.plugin.saveSettings();
-          }));
-  
-    new Setting(containerEl)
-        .setName('Enable notifications')
-        .setDesc('Enable or disable daily todo notifications')
-        .addToggle(toggle => toggle
-          .setValue(this.plugin.settings.enableNotifications)
-          .onChange(async (value) => {
-            this.plugin.settings.enableNotifications = value;
+            this.plugin.initReminders();
+          }))
+        .addButton(button => button
+          .setButtonText('Remove')
+          .onClick(async () => {
+            this.plugin.settings.reminders.splice(index, 1);
+            this.plugin.settings.remindersSent.splice(index, 1);
             await this.plugin.saveSettings();
+            this.display();
           }));
-  
-    const notificationIntervalSetting = new Setting(containerEl)
-        .setName('Notification interval')
-        .setDesc('Interval between notifications in minutes');
-  
-    // Créer un élément span pour afficher la valeur du curseur
-    const intervalDisplay = notificationIntervalSetting.descEl.createEl('span', {
-      text: ` (${this.plugin.settings.notificationInterval} minutes)`,
     });
-  
-    notificationIntervalSetting.addSlider(slider => slider
-      .setLimits(1, 240, 1)
-      .setValue(this.plugin.settings.notificationInterval)
-      .onChange(async (value) => {
-        // Mettre à jour l'affichage de la valeur du curseur
-        intervalDisplay.textContent = ` (${value} minutes)`;
-  
-        this.plugin.settings.notificationInterval = value;
-        await this.plugin.saveSettings();
-        this.plugin.stopNotificationTimer();
-        this.plugin.startNotificationTimer();
-      }));
   }
 }
+
