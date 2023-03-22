@@ -123,39 +123,48 @@ class DailyTodoSettingTab extends PluginSettingTab {
     let { containerEl } = this;
     containerEl.empty();
     containerEl.createEl('h2', { text: 'Daily Todo Plugin Settings' });
-
+  
     new Setting(containerEl)
-      .setName('Template file path')
-      .setDesc('Path to the template file in your vault')
-      .addText(text => text
-        .setPlaceholder('Example: Templates/DailyTodo.md')
-        .setValue(this.plugin.settings.templateFilePath)
-        .onChange(async (value) => {
-          this.plugin.settings.templateFilePath = value;
-          await this.plugin.saveSettings();
-        }));
-
+        .setName('Template file path')
+        .setDesc('Path to the template file in your vault')
+        .addText(text => text
+          .setPlaceholder('Example: Templates/DailyTodo.md')
+          .setValue(this.plugin.settings.templateFilePath)
+          .onChange(async (value) => {
+            this.plugin.settings.templateFilePath = value;
+            await this.plugin.saveSettings();
+          }));
+  
     new Setting(containerEl)
-      .setName('Enable notifications')
-      .setDesc('Enable or disable daily todo notifications')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.enableNotifications)
-        .onChange(async (value) => {
-          this.plugin.settings.enableNotifications = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName('Notification interval')
-      .setDesc('Interval between notifications in minutes')
-      .addSlider(slider => slider
-        .setLimits(1, 240, 1)
-        .setValue(this.plugin.settings.notificationInterval)
-        .onChange(async (value) => {
-          this.plugin.settings.notificationInterval = value;
-          await this.plugin.saveSettings();
-          this.plugin.stopNotificationTimer();
-          this.plugin.startNotificationTimer();
-        }));
+        .setName('Enable notifications')
+        .setDesc('Enable or disable daily todo notifications')
+        .addToggle(toggle => toggle
+          .setValue(this.plugin.settings.enableNotifications)
+          .onChange(async (value) => {
+            this.plugin.settings.enableNotifications = value;
+            await this.plugin.saveSettings();
+          }));
+  
+    const notificationIntervalSetting = new Setting(containerEl)
+        .setName('Notification interval')
+        .setDesc('Interval between notifications in minutes');
+  
+    // Créer un élément span pour afficher la valeur du curseur
+    const intervalDisplay = notificationIntervalSetting.descEl.createEl('span', {
+      text: ` (${this.plugin.settings.notificationInterval} minutes)`,
+    });
+  
+    notificationIntervalSetting.addSlider(slider => slider
+      .setLimits(1, 240, 1)
+      .setValue(this.plugin.settings.notificationInterval)
+      .onChange(async (value) => {
+        // Mettre à jour l'affichage de la valeur du curseur
+        intervalDisplay.textContent = ` (${value} minutes)`;
+  
+        this.plugin.settings.notificationInterval = value;
+        await this.plugin.saveSettings();
+        this.plugin.stopNotificationTimer();
+        this.plugin.startNotificationTimer();
+      }));
   }
 }
