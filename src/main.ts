@@ -41,7 +41,7 @@ export default class DailyTodoPlugin extends Plugin {
         console.error("Error reading template file:", error);
       }
     }
-    return `- [ ] Task 1\n- [ ] Task 2\n- [ ] Task 3`;
+    return `No template`;
   }
   
 
