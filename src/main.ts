@@ -71,20 +71,20 @@ export default class DailyTodoPlugin extends Plugin {
     this.settings.reminders.forEach((time, index) => {
       const [hours, minutes] = time.split(':').map(Number);
       const reminderTime = new Date();
-      reminderTime.setHours(hours, minutes, 0, 0);     
-      
+      reminderTime.setHours(hours, minutes, 0, 0);
+
       if (now < reminderTime && !this.settings.remindersSent[index]) {
         setTimeout(() => {
           this.checkAndNotify();
           this.settings.remindersSent[index] = true;
           this.saveSettings();
         }, reminderTime.getTime() - now.getTime());
-      }    
+      }
     });
   }
-  
+
   async createDailyTodoNote() {
-    const dateFormat = 'YYYY-MM-DD';
+    const dateFormat = 'DD-MM-YYYY';
     const folderName = 'Daily Todos';
     const vault = this.app.vault;
 
@@ -110,7 +110,7 @@ export default class DailyTodoPlugin extends Plugin {
 
 
   async getDailyNote(): Promise<TFile | null> {
-    const dateFormat = 'YYYY-MM-DD';
+    const dateFormat = 'DD-MM-YYYY';
     const folderName = 'Daily Todos';
     const vault = this.app.vault;
 
@@ -132,7 +132,7 @@ export default class DailyTodoPlugin extends Plugin {
       const content = await this.app.vault.read(dailyNote);
       const checkboxes = content.match(/\[([ xX])\]/g) || [];
       const completed = checkboxes.every((checkbox) => checkbox === '[x]' || checkbox === '[X]');
-  
+
       if (!completed) {
         new Notification("N'oubliez pas de terminer votre liste de tâches quotidiennes !");
       }
@@ -174,18 +174,18 @@ class DailyTodoSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-        new Setting(containerEl)
-        .setName('Type de notification')
-        .setDesc("Choisissez 'Interval' pour des notifications régulières ou 'Fixed' pour des rappels à des heures précises")
-        .addDropdown(dropdown => dropdown
-          .addOption('interval', 'Interval')
-          .addOption('fixed', 'Fixed')
-          .setValue(this.plugin.settings.notificationType)
-          .onChange(async (value: 'interval' | 'fixed') => {
-            this.plugin.settings.notificationType = value;
-            await this.plugin.saveSettings();
-            this.plugin.initReminders();
-          }));
+    new Setting(containerEl)
+      .setName('Type de notification')
+      .setDesc("Choisissez 'Interval' pour des notifications régulières ou 'Fixed' pour des rappels à des heures précises")
+      .addDropdown(dropdown => dropdown
+        .addOption('interval', 'Interval')
+        .addOption('fixed', 'Fixed')
+        .setValue(this.plugin.settings.notificationType)
+        .onChange(async (value: 'interval' | 'fixed') => {
+          this.plugin.settings.notificationType = value;
+          await this.plugin.saveSettings();
+          this.plugin.initReminders();
+        }));
 
     new Setting(containerEl)
       .setName('Notification interval')
@@ -204,7 +204,7 @@ class DailyTodoSettingTab extends PluginSettingTab {
       .setDesc('Add reminder times in HH:mm format')
       .addButton(button => button
         .setButtonText('Add a reminder')
-       
+
         .onClick(async () => {
           this.plugin.settings.reminders.push('12:00');
           this.plugin.settings.remindersSent.push(false);
