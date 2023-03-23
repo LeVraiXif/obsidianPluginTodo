@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, MarkdownView } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 
 interface DailyTodoPluginSettings {
   templateFilePath: string;
@@ -36,7 +36,7 @@ export default class DailyTodoPlugin extends Plugin {
       }
     }
   }
-
+  
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
@@ -233,4 +233,3 @@ class DailyTodoSettingTab extends PluginSettingTab {
     });
   }
 }
-
